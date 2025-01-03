@@ -1,7 +1,18 @@
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using OnlineSchop.ClientService.Consumers;
+using OnlineSchop.ClientService.Data;
+using OnlineSchop.ClientService.Interfaces;
+using OnlineSchop.ClientService.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Добавляем DbContext
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Регистрируем репозиторий
+builder.Services.AddScoped<IClientRepository, ClientRepository>();
 
 builder.Services.AddMassTransit(x =>
 {

@@ -1,0 +1,32 @@
+# Please refer https://aka.ms/HTTPSinContainer on how to setup an https developer certificate for your ASP.NET Core service.
+
+version: '3.4'
+
+services:
+  client-service:
+    image: onlineschopclientservice
+    build:
+      context: .
+      dockerfile: OnlineSchop.ClientService/Dockerfile
+      args:
+        - configuration=Debug
+    ports:
+      - 5001:5001
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - ~/.vsdbg:/remote_debugger:rw
+  
+  order-service:
+    image: onlineschoporderservice
+    build:
+      context: .
+      dockerfile: OnlineSchop.OrderService/Dockerfile
+      args:
+        - configuration=Debug
+    ports:
+      - 6001:6001
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - ~/.vsdbg:/remote_debugger:rw

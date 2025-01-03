@@ -1,0 +1,167 @@
+version: '3.4'
+
+services:
+  client-service:
+    image: online-shop/client-service:latest
+    build:
+      context: .
+      dockerfile: OnlineShop.ClientService/Dockerfile
+    ports:
+      - "5001:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:443
+      - ConnectionStrings__DefaultConnection=Server=db;Database=ClientDb;User=sa;Password=${DB_PASSWORD}
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Username=${RABBITMQ_USER}
+      - RabbitMQ__Password=${RABBITMQ_PASS}
+    depends_on:
+      - rabbitmq
+      - db
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+  order-service:
+    image: online-shop/order-service:latest
+    build:
+      context: .
+      dockerfile: OnlineShop.OrderService/Dockerfile
+    ports:
+      - "6001:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:443
+      - ConnectionStrings__DefaultConnection=Server=db;Database=OrderDb;User=sa;Password=${DB_PASSWORD}
+      - RabbitMQ__Host=rabbitmq
+      - RabbitMQ__Username=${RABBITMQ_USER}
+      - RabbitMQ__Password=${RABBITMQ_PASS}
+    depends_on:
+      - rabbitmq
+      - db
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: shop-rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"   # RabbitMQ default port
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_logs:/var/log/rabbitmq
+      - ./init-scripts/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
+      - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_COOKIE}
+      - RABBITMQ_LOAD_DEFINITIONS=/etc/rabbitmq/definitions.json
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - shop-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+
+  db:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: shop-db
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./init-scripts/sql:/docker-entrypoint-initdb.d
+    command: >
+      bash -c '
+        /opt/mssql/bin/sqlservr &
+        sleep 30 &&
+        for script in /docker-entrypoint-initdb.d/*.sql; do
+          /opt/mssql-tools/bin/sqlcmd -U sa -P $$SA_PASSWORD -i $$script
+        done
+      '
+    networks:
+      - shop-network
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "${DB_PASSWORD}" -Q "SELECT 1" -b -o /dev/null
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:alpine
+    container_name: shop-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - shop-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus
+    container_name: shop-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - shop-network
+
+  grafana:
+    image: grafana/grafana
+    container_name: shop-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - shop-network
+    depends_on:
+      - prometheus
+
+volumes:
+  rabbitmq_data:
+  rabbitmq_logs:
+  sqlserver_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  shop-network:
+    driver: bridge
