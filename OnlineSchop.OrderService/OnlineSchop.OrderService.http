@@ -1,0 +1,6 @@
+@OnlineSchop.OrderService_HostAddress = http://localhost:5272
+
+GET {{OnlineSchop.OrderService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
