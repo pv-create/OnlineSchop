@@ -2,65 +2,69 @@ version: '3.4'
 
 services:
   client-service:
-    image: online-shop/client-service:latest
+    image: online-schop/client-service:latest
     build:
       context: .
-      dockerfile: OnlineShop.ClientService/Dockerfile
+      dockerfile: OnlineSchop.ClientService/Dockerfile
     ports:
-      - "5001:443"
+      - "5001-5002:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=https://+:443
-      - ConnectionStrings__DefaultConnection=Server=db;Database=ClientDb;User=sa;Password=${DB_PASSWORD}
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Host=db;Database=ClientDb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Username=${RABBITMQ_USER}
       - RabbitMQ__Password=${RABBITMQ_PASS}
     depends_on:
-      - rabbitmq
-      - db
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - shop-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:443/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 20s
     deploy:
+      mode: replicated
       replicas: 2
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
+      endpoint_mode: dnsrr
 
   order-service:
-    image: online-shop/order-service:latest
+    image: online-schop/order-service:latest
     build:
       context: .
-      dockerfile: OnlineShop.OrderService/Dockerfile
+      dockerfile: OnlineSchop.OrderService/Dockerfile
     ports:
-      - "6001:443"
+      - "6001-6002:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=https://+:443
-      - ConnectionStrings__DefaultConnection=Server=db;Database=OrderDb;User=sa;Password=${DB_PASSWORD}
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Host=db;Database=OrderDb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Username=${RABBITMQ_USER}
       - RabbitMQ__Password=${RABBITMQ_PASS}
     depends_on:
-      - rabbitmq
-      - db
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - shop-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:443/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 20s
     deploy:
+      mode: replicated
       replicas: 2
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
-  
+      endpoint_mode: dnsrr
+    
   rabbitmq:
     image: rabbitmq:3-management
     container_name: shop-rabbitmq
@@ -68,99 +72,57 @@ services:
     ports:
       - "5672:5672"   # RabbitMQ default port
       - "15672:15672" # Management UI
+      - "15692:15692" # Prometheus metrics
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - rabbitmq_logs:/var/log/rabbitmq
-      - ./init-scripts/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
       - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_COOKIE}
-      - RABBITMQ_LOAD_DEFINITIONS=/etc/rabbitmq/definitions.json
+    networks:
+      - shop-network
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - shop-network
-    deploy:
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
+      start_period: 20s
 
   db:
-    image: mcr.microsoft.com/mssql/server:2019-latest
+    image: postgres:16-alpine
     container_name: shop-db
     environment:
-      - ACCEPT_EULA=Y
-      - SA_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=master
+      - PGDATA=/var/lib/postgresql/data/pgdata
     ports:
-      - "1433:1433"
+      - "5432:5432"
     volumes:
-      - sqlserver_data:/var/opt/mssql
-      - ./init-scripts/sql:/docker-entrypoint-initdb.d
-    command: >
-      bash -c '
-        /opt/mssql/bin/sqlservr &
-        sleep 30 &&
-        for script in /docker-entrypoint-initdb.d/*.sql; do
-          /opt/mssql-tools/bin/sqlcmd -U sa -P $$SA_PASSWORD -i $$script
-        done
-      '
+      - postgres_data:/var/lib/postgresql/data/pgdata
+      - ./init-scripts/postgres:/docker-entrypoint-initdb.d
     networks:
       - shop-network
     healthcheck:
-      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "${DB_PASSWORD}" -Q "SELECT 1" -b -o /dev/null
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  redis:
-    image: redis:alpine
-    container_name: shop-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - shop-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  prometheus:
-    image: prom/prometheus
-    container_name: shop-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    networks:
-      - shop-network
-
-  grafana:
-    image: grafana/grafana
-    container_name: shop-grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-    networks:
-      - shop-network
-    depends_on:
-      - prometheus
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1GB
+        reservations:
+          memory: 512M
+    shm_size: 128mb
 
 volumes:
+  postgres_data:
   rabbitmq_data:
   rabbitmq_logs:
   sqlserver_data:
-  redis_data:
-  prometheus_data:
-  grafana_data:
 
 networks:
   shop-network:

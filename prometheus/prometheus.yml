@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'client-service'
+    static_configs:
+      - targets: ['client-service:443']
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
+    metrics_path: '/metrics'
+
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:443']
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
+    metrics_path: '/metrics'
+
+  - job_name: 'consumer-service'
+    static_configs:
+      - targets: ['consumer-service:80']
+    metrics_path: '/metrics'
+
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']
+    metrics_path: '/metrics'

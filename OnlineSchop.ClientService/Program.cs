@@ -7,11 +7,9 @@ using OnlineSchop.ClientService.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Добавляем DbContext
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Регистрируем репозиторий
 builder.Services.AddScoped<IClientRepository, ClientRepository>();
 
 builder.Services.AddMassTransit(x =>
@@ -36,6 +34,8 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+
 
 if (app.Environment.IsDevelopment())
 {
