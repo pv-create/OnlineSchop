@@ -1,3 +1,4 @@
+using System.Reflection;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using OnlineSchop.OrderService.Data;
@@ -8,7 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 string? connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
 builder.Services.AddDbContext<OrderStateDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseNpgsql(connectionString));
 
 builder.Services.AddMassTransit(x =>
 {
@@ -18,7 +19,11 @@ builder.Services.AddMassTransit(x =>
             r.ConcurrencyMode = ConcurrencyMode.Pessimistic;
             r.AddDbContext<DbContext, OrderStateDbContext>((provider, builder) =>
             {
-                builder.UseSqlServer(connectionString);
+                builder.UseNpgsql(connectionString, m =>
+                {
+                    m.MigrationsAssembly(Assembly.GetExecutingAssembly().GetName().Name);
+                    m.MigrationsHistoryTable($"__{nameof(OrderStateDbContext)}");
+                });
             });
         });
 
